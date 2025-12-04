@@ -1,0 +1,15 @@
+{
+  "targets": {
+    "mysql_server": "192.168.10.21",
+    "ad_server": "192.168.10.10",
+    "dns_server": "192.168.10.10"
+  },
+  "credentials": {
+    "mysql_user": "admin_audit",
+    "mysql_password": "CHANGE_ME"
+  },
+  "thresholds": {
+    "cpu_warning": 80,
+    "disk_warning": 90
+  }
+}
