@@ -21,31 +21,49 @@ INFRA = {
 def get_timestamp():
     return datetime.datetime.now().isoformat()
 
+import mysql.connector # Ajouter cet import en haut
+
 def diag_ubuntu(server_key):
     srv = INFRA[server_key]
-    print(f"--- Diagnostic Ubuntu: {server_key} ({srv['ip']}) ---")
+    report = {
+        "timestamp": get_timestamp(),
+        "server": server_key,
+        "status": "UP",
+        "services": {},
+        "resources": {}
+    }
     
     try:
+        # 1. Test SSH pour les ressources (CPU/RAM/OS) [cite: 98]
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(srv['ip'], username=srv['user'], password=srv['pwd'], timeout=5)
         
-        # Commandes pour ressources et MySQL si c'est le serveur DB
-        cmd = "uptime -p && lsb_release -d && free -m && df -h /"
-        if server_key == "wms-db":
-            cmd += " && systemctl is-active mysql"
-            
-        stdin, stdout, stderr = ssh.exec_command(cmd)
-        res = stdout.read().decode()
-        
-        report = {
-            "timestamp": get_timestamp(),
-            "server": server_key,
-            "status": "UP",
-            "details": res.splitlines()
-        }
+        stdin, stdout, stderr = ssh.exec_command("uptime -p && free -m | grep Mem")
+        report["resources"]["summary"] = stdout.read().decode().strip()
         ssh.close()
+
+        # 2. Test spécifique MySQL pour wms-db [cite: 96, 100]
+        if server_key == "wms-db":
+            try:
+                db = mysql.connector.connect(
+                    host=srv['ip'],
+                    user="root",
+                    password="TonMotDePasse", # Utilisez votre mot de passe réel
+                    database="ntl_wms",
+                    connect_timeout=3
+                )
+                cursor = db.cursor()
+                cursor.execute("SELECT COUNT(*) FROM stocks;")
+                count = cursor.fetchone()[0]
+                report["services"]["mysql"] = f"OK (Table stocks: {count} lignes)"
+                db.close()
+            except Exception as e:
+                report["services"]["mysql"] = f"CRITICAL: Connexion échouée ({str(e)})"
+                report["status"] = "WARNING"
+
         return report
+
     except Exception as e:
         return {"timestamp": get_timestamp(), "server": server_key, "status": "DOWN", "error": str(e)}
 
