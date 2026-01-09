@@ -112,29 +112,34 @@ def get_eol_data(product):
 def audit_module():
     print("\n--- Audit d'obsolescence (Scan réseau & EOL) ---")
     report = []
-    # Scan de la plage LAN du siège (Lille)
-    for i in range(10, 25): 
+    # On scanne de .10 à .55 pour couvrir SUPER-01 (.50)
+    for i in range(10, 56): 
         ip = f"192.168.10.{i}"
+        # Commande ping adaptée selon l'OS du script
         cmd = ["ping", "-c", "1", "-W", "1", ip] if os.name != 'nt' else ["ping", "-n", "1", "-w", "100", ip]
         
         if subprocess.call(cmd, stdout=subprocess.DEVNULL) == 0:
-            # Identification simplifiée basée sur votre infrastructure
-            os_type = "windows-server" if i < 20 else "ubuntu" 
-            version = "2019" if os_type == "windows-server" else "22.04"
+            # Identification automatique de l'OS basée sur l'IP
+            if i < 20 or i == 50:
+                os_api_name = "windows-server"
+            else:
+                os_api_name = "ubuntu" # CentOS (IPBX) est aussi sur endoflife.date/centos
+                if i == 40: os_api_name = "centos"
+
+            version = get_precise_version(ip, "windows" if os_api_name == "windows-server" else "ubuntu")
             
-            # Appel à l'API endoflife.date 
-            eol_info = get_eol_data(os_type)
+            # Appel API
+            eol_info = get_eol_data(os_api_name)
             eol_date = "Inconnu"
-            
-            if eol_info:
-                # Recherche de la date de fin de support pour la version détectée
+            if eol_info and version != "Version Inconnue":
+                # On cherche la correspondance de version
                 match = next((x['eol'] for x in eol_info if version in x['cycle']), "Inconnu")
                 eol_date = match
             
-            print(f"[FOUND] {ip} | {os_type} {version} | EOL: {eol_date}")
-            report.append({"ip": ip, "os": os_type, "version": version, "eol": eol_date})
+            print(f"[FOUND] {ip} | {os_api_name} {version} | EOL: {eol_date}")
+            report.append({"ip": ip, "os": os_api_name, "version": version, "eol": eol_date})
             
-    save_report(report, "audit_obsolescence")
+    save_report(report, "audit_obsolescence_complet")
 
 # --- MENU ---
 def main():
