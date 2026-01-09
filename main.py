@@ -13,8 +13,8 @@ import subprocess
 INFRA = {
     "wms-db": {"ip": "192.168.10.21", "user": "wms-db", "pwd": "passroot", "os": "ubuntu"},
     "wms-app": {"ip": "192.168.10.22", "user": "wms-app", "pwd": "passroot", "os": "ubuntu"},
-    "DC01": {"ip": "192.168.10.10", "user": "Administrateur@nord-transit.fr", "pwd": "TonMotDePasse", "os": "windows"},
-    "DC02": {"ip": "192.168.10.11", "user": "Administrateur@nord-transit.fr", "pwd": "TonMotDePasse", "os": "windows"}
+    "DC01": {"ip": "192.168.10.10", "user": "Administrateur@nord-transit.fr", "pwd": "caca31000!", "os": "windows"},
+    "DC02": {"ip": "192.168.10.11", "user": "Administrateur@nord-transit.fr", "pwd": "caca31000!", "os": "windows"}
 }
 
 def get_timestamp():
@@ -117,7 +117,7 @@ def get_eol_data(product):
     except: return None
 
 def audit_module():
-    print("Scan du réseau 192.168.10.0/24... [cite: 104]")
+    print("Scan du réseau 192.168.10.0/24...")
     report = []
     for i in range(10, 25): # Exemple restreint pour le test
         ip = f"192.168.10.{i}"
