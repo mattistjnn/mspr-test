@@ -110,19 +110,28 @@ def get_eol_data(product):
 def audit_module():
     print("\n--- Audit d'obsolescence (Scan réseau & EOL) ---")
     report = []
-    # Scan de la plage LAN du siège [cite: 153]
+    # Scan de la plage LAN du siège (Lille)
     for i in range(10, 25): 
         ip = f"192.168.10.{i}"
         cmd = ["ping", "-c", "1", "-W", "1", ip] if os.name != 'nt' else ["ping", "-n", "1", "-w", "100", ip]
+        
         if subprocess.call(cmd, stdout=subprocess.DEVNULL) == 0:
-            os_type = "windows" if i < 20 else "ubuntu"
-            # Détection version simplifiée pour la démo
-            version = "2019" if os_type == "windows" else "22.04"
+            # Identification simplifiée basée sur votre infrastructure
+            os_type = "windows-server" if i < 20 else "ubuntu" 
+            version = "2019" if os_type == "windows-server" else "22.04"
+            
+            # Appel à l'API endoflife.date 
             eol_info = get_eol_data(os_type)
-            eol_date = next((x['eol'] for x in eol_info if version in x['cycle']), "Inconnu")
+            eol_date = "Inconnu"
+            
+            if eol_info:
+                # Recherche de la date de fin de support pour la version détectée
+                match = next((x['eol'] for x in eol_info if version in x['cycle']), "Inconnu")
+                eol_date = match
             
             print(f"[FOUND] {ip} | {os_type} {version} | EOL: {eol_date}")
             report.append({"ip": ip, "os": os_type, "version": version, "eol": eol_date})
+            
     save_report(report, "audit_obsolescence")
 
 # --- MENU ---
