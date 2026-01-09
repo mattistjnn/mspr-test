@@ -74,7 +74,8 @@ def diag_windows(server_key):
         session = winrm.Session(
             f"http://{srv['ip']}:5985/wsman", 
             auth=(srv['user'], srv['pwd']),
-            transport='ntlm'
+            transport='basic', # On passe en 'basic' car nous l'avons activé ci-dessus
+            server_cert_validation='ignore'
         )
         
         # Le script PS qui récupère TOUT ce qui est demandé dans le cahier des charges
