@@ -20,7 +20,7 @@ INFRA = {
     "DC02": {"ip": "192.168.10.11", "user": "Administrateur@nord-transit.fr", "pwd": "caca31000!", "os": "windows"},
     "IPBX-VM": {"ip": "192.168.10.40", "user": "ipbx", "pwd": "passipbx", "os": "ubuntu"}, 
     "SUPER-01": {"ip": "192.168.10.50", "user": "Administrateur@nord-transit.fr", "pwd": "caca31000!", "os": "windows"},
-    "dimitri": {"ip": "192.168.10.27", "user": "dimitri", "pwd": "dimitri", "os": "ubuntu"}
+    "dimitri": {"ip": "192.168.10.27", "user": "dimitri", "pwd": "passroot", "os": "ubuntu"}
     # "eloise": {"ip": "192.168.10.A DEFINIR", "user": "A DEFINIR", "pwd": "caca31000!", "os": "windows"}
 }
 
