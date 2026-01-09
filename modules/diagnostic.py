@@ -69,32 +69,49 @@ def diag_ubuntu(server_key):
 
 def diag_windows(server_key):
     srv = INFRA[server_key]
-    print(f"--- Diagnostic Windows: {server_key} ({srv['ip']}) ---")
-    
     try:
-        # Connexion WinRM (doit être activé sur DC01/DC02)
-        session = winrm.Session(f"http://{srv['ip']}:5985/wsman", auth=(srv['user'], srv['pwd']))
+        # Utilisation de transport='ntlm' pour éviter le rejet des credentials
+        session = winrm.Session(
+            f"http://{srv['ip']}:5985/wsman", 
+            auth=(srv['user'], srv['pwd']),
+            transport='ntlm'
+        )
         
-        # Script PowerShell pour AD, DNS et ressources
+        # Le script PS qui récupère TOUT ce qui est demandé dans le cahier des charges
         ps_script = """
-        $os = Get-CimInstance Win32_OperatingSystem | Select-Object Caption, LastBootUpTime
-        $cpu = Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage
-        $mem = Get-CimInstance Win32_OperatingSystem | Select-Object @{Name="FreeMB";Expression={$_.FreePhysicalMemory/1KB}}
-        $ad = Get-Service -Name adws,dns -ErrorAction SilentlyContinue | Select-Object Name, Status
-        return "OS:$($os.Caption) | CPU:$($cpu)% | FreeMem:$($mem.FreeMB)MB | AD/DNS:$($ad)"
+        $os = Get-CimInstance Win32_OperatingSystem
+        $cpu = Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average
+        $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+        $ad = Get-Service -Name "NTDS" -ErrorAction SilentlyContinue
+        $dns = Get-Service -Name "DNS" -ErrorAction SilentlyContinue
+        
+        $obj = [PSCustomObject]@{
+            OS = $os.Caption
+            Uptime = "$((New-TimeSpan -Start $os.LastBootUpTime).Days) jours"
+            CPU = "$($cpu.Average)%"
+            RAM_Free = "$([math]::Round($os.FreePhysicalMemory / 1MB, 2)) GB"
+            Disk_C_Free = "$([math]::Round($disk.FreeSpace / 1GB, 2)) GB"
+            AD_Service = if($ad){$ad.Status}else{"N/A"}
+            DNS_Service = if($dns){$dns.Status}else{"N/A"}
+        }
+        $obj | ConvertTo-Json
         """
         
         run = session.run_ps(ps_script)
         
-        report = {
-            "timestamp": get_timestamp(),
-            "server": server_key,
-            "status": "UP" if run.status_code == 0 else "ERROR",
-            "output": run.std_out.decode().strip()
-        }
-        return report
+        if run.status_code == 0:
+            data = json.loads(run.std_out.decode().strip())
+            return {
+                "timestamp": get_timestamp(),
+                "server": server_key,
+                "status": "UP",
+                "metrics": data
+            }
+        else:
+            return {"server": server_key, "status": "ERROR", "error": run.std_err.decode()}
+            
     except Exception as e:
-        return {"timestamp": get_timestamp(), "server": server_key, "status": "DOWN", "error": str(e)}
+        return {"server": server_key, "status": "DOWN", "error": str(e)}
 
 def main_menu():
     while True:
