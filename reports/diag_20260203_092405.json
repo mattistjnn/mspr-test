@@ -1,0 +1,45 @@
+[
+    {
+        "server": "wms-db",
+        "status": "DOWN",
+        "services": {},
+        "metrics": {},
+        "error": "timed out"
+    },
+    {
+        "server": "wms-app",
+        "status": "DOWN",
+        "services": {},
+        "metrics": {},
+        "error": "timed out"
+    },
+    {
+        "server": "DC01",
+        "status": "DOWN",
+        "error": "HTTPConnectionPool(host='192.168.10.10', port=5985): Max retries exceeded with url: /wsman (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x107deb220>, 'Connection to 192.168.10.10 timed out. (connect timeout=30)'))"
+    },
+    {
+        "server": "DC02",
+        "status": "DOWN",
+        "error": "HTTPConnectionPool(host='192.168.10.11', port=5985): Max retries exceeded with url: /wsman (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x107debc70>, 'Connection to 192.168.10.11 timed out. (connect timeout=30)'))"
+    },
+    {
+        "server": "IPBX-VM",
+        "status": "DOWN",
+        "services": {},
+        "metrics": {},
+        "error": "timed out"
+    },
+    {
+        "server": "SUPER-01",
+        "status": "DOWN",
+        "error": "HTTPConnectionPool(host='192.168.10.50', port=5985): Max retries exceeded with url: /wsman (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x107e00730>, 'Connection to 192.168.10.50 timed out. (connect timeout=30)'))"
+    },
+    {
+        "server": "dimitri",
+        "status": "DOWN",
+        "services": {},
+        "metrics": {},
+        "error": "timed out"
+    }
+]

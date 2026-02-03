@@ -1,15 +1,44 @@
 {
-  "targets": {
-    "mysql_server": "192.168.10.21",
-    "ad_server": "192.168.10.10",
-    "dns_server": "192.168.10.10"
+  "wms-db": {
+    "ip": "192.168.10.21",
+    "user": "wms-db",
+    "pwd": "passroot",
+    "os": "ubuntu"
   },
-  "credentials": {
-    "mysql_user": "admin_audit",
-    "mysql_password": "CHANGE_ME"
+  "wms-app": {
+    "ip": "192.168.10.22",
+    "user": "wms-app",
+    "pwd": "passroot",
+    "os": "ubuntu"
   },
-  "thresholds": {
-    "cpu_warning": 80,
-    "disk_warning": 90
+  "DC01": {
+    "ip": "192.168.10.10",
+    "user": "Administrateur@nord-transit.fr",
+    "pwd": "caca31000!",
+    "os": "windows"
+  },
+  "DC02": {
+    "ip": "192.168.10.11",
+    "user": "Administrateur@nord-transit.fr",
+    "pwd": "caca31000!",
+    "os": "windows"
+  },
+  "IPBX-VM": {
+    "ip": "192.168.10.40",
+    "user": "ipbx",
+    "pwd": "passipbx",
+    "os": "ubuntu"
+  },
+  "SUPER-01": {
+    "ip": "192.168.10.50",
+    "user": "Administrateur@nord-transit.fr",
+    "pwd": "caca31000!",
+    "os": "windows"
+  },
+  "dimitri": {
+    "ip": "192.168.10.27",
+    "user": "dimitri",
+    "pwd": "passroot",
+    "os": "ubuntu"
   }
 }

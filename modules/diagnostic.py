@@ -1,154 +1,52 @@
-# 1/ Module Diagnostic
-# Fonctions :
-#           Vérifier l’état des services AD / DNS sur les contrôleurs de domaine.
-#           Tester le bon fonctionnement de la base de données MYSQL.
-#           OK : Permettre de vérifier la version d’OS, l’uptime, l’utilisation des ressources CPU / RAM / Disques pour une machine Windows Server
-#           OK : Permettre de vérifier la version d’OS, l’uptime, l’utilisation des ressources CPU / RAM / Disques pour une machine Ubuntu
 import os
 import json
 import datetime
 import paramiko
 import winrm
-
-# Configuration issue de vos informations
-INFRA = {
-    "wms-db": {"ip": "192.168.10.21", "user": "wms-db", "pwd": "passroot", "os": "ubuntu"},
-    "wms-app": {"ip": "192.168.10.22", "user": "wms-app", "pwd": "passroot", "os": "ubuntu"},
-    "DC01": {"ip": "192.168.10.10", "user": "Administrateur@nord-transit.fr", "pwd": "caca31000!", "os": "windows"},
-    "DC02": {"ip": "192.168.10.11", "user": "Administrateur@nord-transit.fr", "pwd": "caca31000!", "os": "windows"}
-}
-
-def get_timestamp():
-    return datetime.datetime.now().isoformat()
-
-import mysql.connector # Ajouter cet import en haut
+import mysql.connector
+import csv
+import requests
+import subprocess
+import warnings
 
 def diag_ubuntu(server_key):
     srv = INFRA[server_key]
-    report = {
-        "timestamp": get_timestamp(),
-        "server": server_key,
-        "status": "UP",
-        "services": {},
-        "resources": {}
-    }
-    
+    report = {"server": server_key, "status": "UP", "services": {}, "metrics": {}}
     try:
-        # 1. Test SSH pour les ressources (CPU/RAM/OS) [cite: 98]
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(srv['ip'], username=srv['user'], password=srv['pwd'], timeout=5)
-        
-        stdin, stdout, stderr = ssh.exec_command("uptime -p && free -m | grep Mem")
-        report["resources"]["summary"] = stdout.read().decode().strip()
-        ssh.close()
-
-        # 2. Test spécifique MySQL pour wms-db [cite: 96, 100]
+        stdin, stdout, stderr = ssh.exec_command("uptime -p && free -m && lsb_release -d")
+        report["metrics"]["raw"] = stdout.read().decode().strip()
         if server_key == "wms-db":
             try:
-                db = mysql.connector.connect(
-                    host=srv['ip'],
-                    user="root",
-                    password="TonMotDePasse", # Utilisez votre mot de passe réel
-                    database="ntl_wms",
-                    connect_timeout=3
-                )
-                cursor = db.cursor()
-                cursor.execute("SELECT COUNT(*) FROM stocks;")
-                count = cursor.fetchone()[0]
-                report["services"]["mysql"] = f"OK (Table stocks: {count} lignes)"
+                db = mysql.connector.connect(host=srv['ip'], user="root", password="TonMotDePasse", database="ntl_wms", connect_timeout=3)
+                report["services"]["mysql"] = "OK"
                 db.close()
-            except Exception as e:
-                report["services"]["mysql"] = f"CRITICAL: Connexion échouée ({str(e)})"
-                report["status"] = "WARNING"
-
-        return report
-
-    except Exception as e:
-        return {"timestamp": get_timestamp(), "server": server_key, "status": "DOWN", "error": str(e)}
+            except: report["services"]["mysql"] = "KO"
+        ssh.close()
+    except Exception as e: report["status"] = "DOWN"; report["error"] = str(e)
+    return report
 
 def diag_windows(server_key):
     srv = INFRA[server_key]
     try:
-        # Utilisation de transport='ntlm' pour éviter le rejet des credentials
-        session = winrm.Session(
-            f"http://{srv['ip']}:5985/wsman", 
-            auth=(srv['user'], srv['pwd']),
-            transport='basic', # On passe en 'basic' car nous l'avons activé ci-dessus
-            server_cert_validation='ignore'
-        )
-        
-        # Le script PS qui récupère TOUT ce qui est demandé dans le cahier des charges
+        session = winrm.Session(f"http://{srv['ip']}:5985/wsman", auth=(srv['user'], srv['pwd']), transport='ntlm')
         ps_script = """
         $os = Get-CimInstance Win32_OperatingSystem
         $cpu = Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average
-        $disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
         $ad = Get-Service -Name "NTDS" -ErrorAction SilentlyContinue
         $dns = Get-Service -Name "DNS" -ErrorAction SilentlyContinue
-        
-        $obj = [PSCustomObject]@{
-            OS = $os.Caption
-            Uptime = "$((New-TimeSpan -Start $os.LastBootUpTime).Days) jours"
-            CPU = "$($cpu.Average)%"
-            RAM_Free = "$([math]::Round($os.FreePhysicalMemory / 1MB, 2)) GB"
-            Disk_C_Free = "$([math]::Round($disk.FreeSpace / 1GB, 2)) GB"
-            AD_Service = if($ad){$ad.Status}else{"N/A"}
-            DNS_Service = if($dns){$dns.Status}else{"N/A"}
-        }
-        $obj | ConvertTo-Json
-        """
-        
+        @{ OS=$os.Caption; Uptime="$((New-TimeSpan -Start $os.LastBootUpTime).Days) j"; CPU="$($cpu.Average)%"; AD=$ad.Status; DNS=$dns.Status } | ConvertTo-Json
+        """ 
         run = session.run_ps(ps_script)
-        
-        if run.status_code == 0:
-            data = json.loads(run.std_out.decode().strip())
-            return {
-                "timestamp": get_timestamp(),
-                "server": server_key,
-                "status": "UP",
-                "metrics": data
-            }
-        else:
-            return {"server": server_key, "status": "ERROR", "error": run.std_err.decode()}
-            
-    except Exception as e:
-        return {"server": server_key, "status": "DOWN", "error": str(e)}
+        return {"server": server_key, "status": "UP", "metrics": json.loads(run.std_out)}
+    except Exception as e: return {"server": server_key, "status": "DOWN", "error": str(e)}
 
-def main_menu():
-    while True:
-        print("\n=== NTL-SysToolbox : Module Diagnostic ===")
-        print("1. Vérifier les Contrôleurs de Domaine (DC01/DC02)")
-        print("2. Vérifier la Base de Données (WMS-DB)")
-        print("3. Diagnostic complet du Siège (Toutes les VM)")
-        print("4. Quitter")
-        
-        choice = input("Choisissez une option : ")
-        
-        results = []
-        if choice == "1":
-            results.append(diag_windows("DC01"))
-            results.append(diag_windows("DC02"))
-        elif choice == "2":
-            results.append(diag_ubuntu("wms-db"))
-        elif choice == "3":
-            for srv in INFRA:
-                if INFRA[srv]["os"] == "windows":
-                    results.append(diag_windows(srv))
-                else:
-                    results.append(diag_ubuntu(srv))
-        elif choice == "4":
-            break
-        else:
-            print("Option invalide.")
-            continue
-
-        # Affichage et Export JSON
-        final_json = json.dumps(results, indent=4)
-        print(final_json)
-        
-        with open(f"diag_report_{choice}.json", "w") as f:
-            f.write(final_json)
-            print(f"\n[INFO] Rapport généré dans diag_report_{choice}.json")
-
-if __name__ == "__main__":
-    main_menu()
+def diag_module():
+    results = []
+    for name, srv in INFRA.items():
+        res = diag_windows(name) if srv["os"] == "windows" else diag_ubuntu(name)
+        results.append(res)
+    print(json.dumps(results, indent=4))
+    save_report(results, "diag")
