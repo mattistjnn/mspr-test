@@ -8,7 +8,8 @@ import csv
 import requests
 import subprocess
 import warnings
-from dotenv import load_dotenv 
+from dotenv import load_dotenv
+from paramiko import Transport
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -108,22 +109,26 @@ def backup_module():
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(srv['ip'], username=srv['user'], password=srv['pwd'])
-        
+
         # Utilisation du mot de passe centralisé
         ssh.exec_command(f"mysqldump -u root -p'{MYSQL_PWD}' ntl_wms > /tmp/backup_{ts}.sql")
-        
-        db = mysql.connector.connect(host=srv['ip'], user="root", password=MYSQL_PWD, database="ntl_wms")
+
+        # Tunnel SSH pour que MySQL voie la connexion depuis localhost
+        transport = ssh.get_transport()
+        channel = transport.open_channel("direct-tcpip", ("127.0.0.1", 3306), ("127.0.0.1", 0))
+
+        db = mysql.connector.connect(host="127.0.0.1", user="root", password=MYSQL_PWD, database="ntl_wms", sock=channel)
         cursor = db.cursor()
         cursor.execute("SELECT * FROM stocks")
-        
+
         with open(f"backups/stocks_{ts}.csv", "w", newline='') as f:
             writer = csv.writer(f)
             writer.writerow([i[0] for i in cursor.description])
             writer.writerows(cursor.fetchall())
-            
+
         print("[OK] Sauvegardes terminées.")
         db.close(); ssh.close()
-    except Exception as e: 
+    except Exception as e:
         print(f"[ERREUR] {e}")
 
 # --- MODULE 3 : AUDIT OBSOLESCENCE ---

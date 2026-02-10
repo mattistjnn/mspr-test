@@ -36,7 +36,7 @@
     "os": "windows"
   },
   "dimitri": {
-    "ip": "192.168.10.27",
+    "ip": "192.168.10.36",
     "user": "dimitri",
     "pwd": "passroot",
     "os": "ubuntu"
