@@ -9,7 +9,6 @@ import requests
 import subprocess
 import warnings
 from dotenv import load_dotenv
-from paramiko import Transport
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -58,13 +57,10 @@ def diag_ubuntu(server_key):
         
         if server_key == "wms-db":
             try:
-                db = mysql.connector.connect(
-                    host=srv['ip'], user="root", password=MYSQL_PWD, 
-                    database="ntl_wms", connect_timeout=3
-                )
-                report["services"]["mysql"] = "OK"
-                db.close()
-            except: 
+                stdin, stdout, stderr = ssh.exec_command(f"mysql -u root -p'{MYSQL_PWD}' -e 'SELECT 1' ntl_wms")
+                result = stdout.read().decode().strip()
+                report["services"]["mysql"] = "OK" if result else "KO"
+            except:
                 report["services"]["mysql"] = "KO"
         ssh.close()
     except Exception as e: 
@@ -110,24 +106,25 @@ def backup_module():
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(srv['ip'], username=srv['user'], password=srv['pwd'])
 
-        # Utilisation du mot de passe centralisé
-        ssh.exec_command(f"mysqldump -u root -p'{MYSQL_PWD}' ntl_wms > /tmp/backup_{ts}.sql")
+        # Dump SQL complet
+        stdin, stdout, stderr = ssh.exec_command(f"mysqldump -u root -p'{MYSQL_PWD}' ntl_wms")
+        dump = stdout.read()
+        with open(f"backups/backup_{ts}.sql", "wb") as f:
+            f.write(dump)
 
-        # Tunnel SSH pour que MySQL voie la connexion depuis localhost
-        transport = ssh.get_transport()
-        channel = transport.open_channel("direct-tcpip", ("127.0.0.1", 3306), ("127.0.0.1", 0))
-
-        db = mysql.connector.connect(host="127.0.0.1", user="root", password=MYSQL_PWD, database="ntl_wms", sock=channel)
-        cursor = db.cursor()
-        cursor.execute("SELECT * FROM stocks")
-
-        with open(f"backups/stocks_{ts}.csv", "w", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([i[0] for i in cursor.description])
-            writer.writerows(cursor.fetchall())
+        # Export CSV de la table stocks via SSH
+        stdin, stdout, stderr = ssh.exec_command(
+            f"mysql -u root -p'{MYSQL_PWD}' ntl_wms -e 'SELECT * FROM stocks' --batch"
+        )
+        output = stdout.read().decode().strip()
+        if output:
+            with open(f"backups/stocks_{ts}.csv", "w", newline='') as f:
+                writer = csv.writer(f)
+                for line in output.split("\n"):
+                    writer.writerow(line.split("\t"))
 
         print("[OK] Sauvegardes terminées.")
-        db.close(); ssh.close()
+        ssh.close()
     except Exception as e:
         print(f"[ERREUR] {e}")
 
@@ -163,30 +160,66 @@ def analyze_obsolescence(version, eol_info):
     else:
         return f"OK : Supporté jusqu'au {eol_date_str}"
 
+def get_version_ssh(ip, user, pwd):
+    """Récupère la version OS via SSH (Ubuntu/Linux)."""
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(ip, username=user, password=pwd, timeout=5)
+        stdin, stdout, stderr = ssh.exec_command("lsb_release -rs 2>/dev/null || cat /etc/os-release | grep VERSION_ID | cut -d'\"' -f2")
+        version = stdout.read().decode().strip()
+        ssh.close()
+        return version if version else "Version Inconnue"
+    except:
+        return "Version Inconnue"
+
+def get_version_winrm(ip, user, pwd):
+    """Récupère la version OS via WinRM (Windows)."""
+    try:
+        session = winrm.Session(f"http://{ip}:5985/wsman", auth=(user, pwd), transport='ntlm')
+        run = session.run_ps("(Get-CimInstance Win32_OperatingSystem).Version")
+        version = run.std_out.decode().strip()
+        return version if version else "Version Inconnue"
+    except:
+        return "Version Inconnue"
+
 def audit_module():
     print("\n--- Module 3 : Audit d'obsolescence ---")
     print("1. Scan réseau complet (192.168.10.x) ")
     print("2. Lister cycles de vie pour un OS spécifique ")
     print("3. Importer un inventaire CSV ")
-    
+
     choix = input("\nVotre choix : ")
 
     if choix == "1":
         print("Scan du réseau en cours...")
+        # Index des IPs connues dans INFRA pour récupérer les credentials
+        ip_to_infra = {srv["ip"]: srv for srv in INFRA.values()}
         report = []
-        for i in range(10, 56): 
+        for i in range(10, 56):
             ip = f"192.168.10.{i}"
             cmd = ["ping", "-c", "1", "-W", "1", ip] if os.name != 'nt' else ["ping", "-n", "1", "-w", "100", ip]
-            if subprocess.call(cmd, stdout=subprocess.DEVNULL) == 0:
-                os_type = "windows-server" if (i < 20 or i == 50) else "ubuntu"
-                if i == 40: os_type = "centos"
-                
-                version = "Version Détectée" 
-                eol_info = get_eol_data(os_type)
-                statut = analyze_obsolescence(version, eol_info)
-                
-                print(f"[FOUND] {ip} | {os_type} | {statut}")
-                report.append({"ip": ip, "os": os_type, "status": statut, "at": get_timestamp()})
+            try:
+                if subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3) == 0:
+                    os_type = "windows-server" if (i < 20 or i == 50) else "ubuntu"
+                    if i == 40: os_type = "centos"
+
+                    # Détection de la vraie version si credentials disponibles
+                    version = "Version Inconnue"
+                    if ip in ip_to_infra:
+                        srv = ip_to_infra[ip]
+                        if srv["os"] == "windows":
+                            version = get_version_winrm(ip, srv["user"], srv["pwd"])
+                        else:
+                            version = get_version_ssh(ip, srv["user"], srv["pwd"])
+
+                    eol_info = get_eol_data(os_type)
+                    statut = analyze_obsolescence(version, eol_info)
+
+                    print(f"[FOUND] {ip} | {os_type} {version} | {statut}")
+                    report.append({"ip": ip, "os": os_type, "version": version, "status": statut, "at": get_timestamp()})
+            except subprocess.TimeoutExpired:
+                continue
         save_report(report, "audit_obsolescence_complet")
 
     elif choix == "2":
