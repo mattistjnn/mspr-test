@@ -1,40 +1,60 @@
 import os
 import json
 import datetime
+import re
+import csv
+import subprocess
+import warnings
 import paramiko
 import winrm
-import mysql.connector
-import csv
 import requests
-import subprocess
-import re
-import warnings
 from dotenv import load_dotenv
 
 warnings.filterwarnings("ignore", category=UserWarning)
-
 load_dotenv()
 
+
+#  CONFIGURATION
+
+
 def load_infra_from_env():
-    """Reconstruit le dictionnaire INFRA à partir des variables d'environnement."""
-    infra_dict = {}
+    """Reconstruit le dictionnaire INFRA à partir des variables INFRA_* du .env."""
+    infra = {}
     for key, value in os.environ.items():
         if key.startswith("INFRA_"):
-            friendly_name = key.replace("INFRA_", "").lower().replace("_", "-")
+            name = key.replace("INFRA_", "").lower().replace("_", "-")
             parts = value.split(",")
             if len(parts) == 4:
-                infra_dict[friendly_name] = {
-                    "ip": parts[0],
-                    "user": parts[1],
-                    "pwd": parts[2],
-                    "os": parts[3]
-                }
-    return infra_dict
+                infra[name] = {"ip": parts[0], "user": parts[1], "pwd": parts[2], "os": parts[3]}
+    return infra
 
 INFRA = load_infra_from_env()
 MYSQL_PWD = os.getenv("DB_ROOT_PWD", "default_pass")
 
-# --- OUTILS GÉNÉRIQUES ---
+
+#  HELPERS : CONNEXIONS & UTILITAIRES
+
+
+def ssh_connect(ip, user, pwd):
+    """Ouvre et retourne une connexion SSH."""
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(ip, username=user, password=pwd, timeout=5)
+    return ssh
+
+def ssh_run(ssh, cmd):
+    """Exécute une commande SSH et retourne la sortie stdout."""
+    _, stdout, _ = ssh.exec_command(cmd)
+    return stdout.read().decode().strip()
+
+def winrm_session(ip, user, pwd):
+    """Ouvre et retourne une session WinRM."""
+    return winrm.Session(f"http://{ip}:5985/wsman", auth=(user, pwd), transport='ntlm')
+
+def winrm_ps(session, script):
+    """Exécute un script PowerShell et retourne la sortie stdout."""
+    return session.run_ps(script).std_out.decode().strip()
+
 def get_timestamp():
     return datetime.datetime.now().isoformat()
 
@@ -45,26 +65,25 @@ def save_report(data, prefix):
         json.dump(data, f, indent=4)
     print(f"\n[INFO] Rapport généré : {filename}")
 
-# --- MODULE 1 : DIAGNOSTIC ---
+
+#  MODULE 1 : DIAGNOSTIC
+
+
 def diag_ubuntu(server_key):
     srv = INFRA[server_key]
     report = {"server": server_key, "status": "UP", "services": {}, "metrics": {}}
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(srv['ip'], username=srv['user'], password=srv['pwd'], timeout=5)
-        stdin, stdout, stderr = ssh.exec_command("uptime -p && free -m && lsb_release -d")
-        report["metrics"]["raw"] = stdout.read().decode().strip()
-        
+        ssh = ssh_connect(srv['ip'], srv['user'], srv['pwd'])
+        report["metrics"]["raw"] = ssh_run(ssh, "uptime -p && free -m && lsb_release -d")
+
         if server_key == "wms-db":
             try:
-                stdin, stdout, stderr = ssh.exec_command(f"mysql -u root -p'{MYSQL_PWD}' -e 'SELECT 1' ntl_wms")
-                result = stdout.read().decode().strip()
+                result = ssh_run(ssh, f"mysql -u root -p'{MYSQL_PWD}' -e 'SELECT 1' ntl_wms")
                 report["services"]["mysql"] = "OK" if result else "KO"
             except:
                 report["services"]["mysql"] = "KO"
         ssh.close()
-    except Exception as e: 
+    except Exception as e:
         report["status"] = "DOWN"
         report["error"] = str(e)
     return report
@@ -72,17 +91,16 @@ def diag_ubuntu(server_key):
 def diag_windows(server_key):
     srv = INFRA[server_key]
     try:
-        session = winrm.Session(f"http://{srv['ip']}:5985/wsman", auth=(srv['user'], srv['pwd']), transport='ntlm')
+        session = winrm_session(srv['ip'], srv['user'], srv['pwd'])
         ps_script = """
         $os = Get-CimInstance Win32_OperatingSystem
         $cpu = Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average
         $ad = Get-Service -Name "NTDS" -ErrorAction SilentlyContinue
         $dns = Get-Service -Name "DNS" -ErrorAction SilentlyContinue
         @{ OS=$os.Caption; Uptime="$((New-TimeSpan -Start $os.LastBootUpTime).Days) j"; CPU="$($cpu.Average)%"; AD=$ad.Status; DNS=$dns.Status } | ConvertTo-Json
-        """ 
-        run = session.run_ps(ps_script)
-        return {"server": server_key, "status": "UP", "metrics": json.loads(run.std_out)}
-    except Exception as e: 
+        """
+        return {"server": server_key, "status": "UP", "metrics": json.loads(winrm_ps(session, ps_script))}
+    except Exception as e:
         return {"server": server_key, "status": "DOWN", "error": str(e)}
 
 def diag_module():
@@ -93,31 +111,28 @@ def diag_module():
     print(json.dumps(results, indent=4))
     save_report(results, "diag")
 
-# --- MODULE 2 : SAUVEGARDE WMS ---
+
+#  MODULE 2 : SAUVEGARDE WMS
+
+
 def backup_module():
     if "wms-db" not in INFRA:
         print("[ERREUR] Configuration wms-db introuvable dans le .env")
         return
-    
+
     srv = INFRA["wms-db"]
     os.makedirs('backups', exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(srv['ip'], username=srv['user'], password=srv['pwd'])
+        ssh = ssh_connect(srv['ip'], srv['user'], srv['pwd'])
 
         # Dump SQL complet
-        stdin, stdout, stderr = ssh.exec_command(f"mysqldump -u root -p'{MYSQL_PWD}' ntl_wms")
-        dump = stdout.read()
+        _, stdout, _ = ssh.exec_command(f"mysqldump -u root -p'{MYSQL_PWD}' ntl_wms")
         with open(f"backups/backup_{ts}.sql", "wb") as f:
-            f.write(dump)
+            f.write(stdout.read())
 
-        # Export CSV de la table stocks via SSH
-        stdin, stdout, stderr = ssh.exec_command(
-            f"mysql -u root -p'{MYSQL_PWD}' ntl_wms -e 'SELECT * FROM stocks' --batch"
-        )
-        output = stdout.read().decode().strip()
+        # Export CSV de la table stocks
+        output = ssh_run(ssh, f"mysql -u root -p'{MYSQL_PWD}' ntl_wms -e 'SELECT * FROM stocks' --batch")
         if output:
             with open(f"backups/stocks_{ts}.csv", "w", newline='') as f:
                 writer = csv.writer(f)
@@ -129,75 +144,80 @@ def backup_module():
     except Exception as e:
         print(f"[ERREUR] {e}")
 
-# --- MODULE 3 : AUDIT OBSOLESCENCE ---
+
+#  MODULE 3 : AUDIT OBSOLESCENCE
+
+
 def get_eol_data(product):
-    url = f"https://endoflife.date/api/{product.lower()}.json"
+    """Interroge l'API endoflife.date pour un produit donné."""
     try:
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(f"https://endoflife.date/api/{product.lower()}.json", timeout=5)
         return resp.json() if resp.status_code == 200 else None
     except:
         return None
 
 def analyze_obsolescence(version, eol_info):
+    """Qualifie le statut EOL : OK / ATTENTION / CRITIQUE."""
     if not eol_info or version in ["Version Inconnue", "Access Denied"]:
         return "Inconnu"
-    
+
     match = next((x for x in eol_info if x['cycle'] in version or version in x['cycle']), None)
     if not match:
         return "Version non répertoriée"
-    
+
     eol_date_str = match['eol']
-    # Gestion du cas où 'eol' est un booléen (ex: true pour supporté)
     if isinstance(eol_date_str, bool):
         return "OK : Supporté"
-        
+
     eol_date = datetime.datetime.strptime(eol_date_str, "%Y-%m-%d")
-    now = datetime.datetime.now()
-    
-    if eol_date < now:
+    jours_restants = (eol_date - datetime.datetime.now()).days
+
+    if jours_restants < 0:
         return f"CRITIQUE : Obsolète depuis le {eol_date_str}"
-    elif (eol_date - now).days < 180:
+    elif jours_restants < 180:
         return f"ATTENTION : Fin de vie proche ({eol_date_str})"
     else:
         return f"OK : Supporté jusqu'au {eol_date_str}"
 
 def get_version_ssh(ip, user, pwd):
-    """Récupère la version OS via SSH (Ubuntu/Linux)."""
+    """Récupère la version OS via SSH (ex: '22.04')."""
     try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(ip, username=user, password=pwd, timeout=5)
-        stdin, stdout, stderr = ssh.exec_command("lsb_release -rs 2>/dev/null || cat /etc/os-release | grep VERSION_ID | cut -d'\"' -f2")
-        version = stdout.read().decode().strip()
+        ssh = ssh_connect(ip, user, pwd)
+        version = ssh_run(ssh, "lsb_release -rs 2>/dev/null || cat /etc/os-release | grep VERSION_ID | cut -d'\"' -f2")
         ssh.close()
         return version if version else "Version Inconnue"
     except:
         return "Version Inconnue"
 
 def get_version_winrm(ip, user, pwd):
-    """Récupère la version OS via WinRM (Windows). Retourne l'année (ex: '2022')."""
+    """Récupère la version Windows via WinRM (ex: '2022')."""
     try:
-        session = winrm.Session(f"http://{ip}:5985/wsman", auth=(user, pwd), transport='ntlm')
-        # Caption retourne ex: "Microsoft Windows Server 2022 Standard"
-        run = session.run_ps("(Get-CimInstance Win32_OperatingSystem).Caption")
-        caption = run.std_out.decode().strip()
-        # Extraire l'année (2016, 2019, 2022, 2025...)
-        match = re.search(r'(20\d{2})', caption)
-        return match.group(1) if match else "Version Inconnue"
+        session = winrm_session(ip, user, pwd)
+        caption = winrm_ps(session, "(Get-CimInstance Win32_OperatingSystem).Caption")
+        m = re.search(r'(20\d{2})', caption)
+        return m.group(1) if m else "Version Inconnue"
     except:
         return "Version Inconnue"
 
+def detect_version(ip, ip_to_infra):
+    """Détecte la version OS d'une IP si ses credentials sont connus."""
+    if ip not in ip_to_infra:
+        return "Version Inconnue"
+    srv = ip_to_infra[ip]
+    if srv["os"] == "windows":
+        return get_version_winrm(ip, srv["user"], srv["pwd"])
+    return get_version_ssh(ip, srv["user"], srv["pwd"])
+
 def audit_module():
     print("\n--- Module 3 : Audit d'obsolescence ---")
-    print("1. Scan réseau complet (192.168.10.x) ")
-    print("2. Lister cycles de vie pour un OS spécifique ")
-    print("3. Importer un inventaire CSV ")
+    print("1. Scan réseau complet (192.168.10.x)")
+    print("2. Lister cycles de vie pour un OS spécifique")
+    print("3. Importer un inventaire CSV")
 
     choix = input("\nVotre choix : ")
 
     if choix == "1":
         print("Scan du réseau en cours...")
-        # Index des IPs connues dans INFRA pour récupérer les credentials
         ip_to_infra = {srv["ip"]: srv for srv in INFRA.values()}
         report = []
         for i in range(10, 56):
@@ -208,15 +228,7 @@ def audit_module():
                     os_type = "windows-server" if (i < 20 or i == 50) else "ubuntu"
                     if i == 40: os_type = "centos"
 
-                    # Détection de la vraie version si credentials disponibles
-                    version = "Version Inconnue"
-                    if ip in ip_to_infra:
-                        srv = ip_to_infra[ip]
-                        if srv["os"] == "windows":
-                            version = get_version_winrm(ip, srv["user"], srv["pwd"])
-                        else:
-                            version = get_version_ssh(ip, srv["user"], srv["pwd"])
-
+                    version = detect_version(ip, ip_to_infra)
                     eol_info = get_eol_data(os_type)
                     statut = analyze_obsolescence(version, eol_info)
 
@@ -235,22 +247,26 @@ def audit_module():
         else:
             print("OS non trouvé.")
 
+
+#  MENU PRINCIPAL
+
+
 def main():
     if not INFRA:
         print("/!\\ Alerte : Aucun serveur chargé depuis le fichier .env")
-        
+
     while True:
         print("\n" + "="*45 + "\n  NTL-SysToolbox - GESTION D'EXPLOITATION\n" + "="*45)
         print("1. [Diagnostic] Disponibilité & Ressources")
         print("2. [Sauvegarde] Export SQL & CSV (WMS)")
         print("3. [Audit] Inventaire & Obsolescence (EOL)")
         print("4. Quitter")
-        
-        c = input("\nChoix : ")
-        if c == "1": diag_module()
-        elif c == "2": backup_module()
-        elif c == "3": audit_module()
-        elif c == "4": break
+
+        choix = input("\nChoix : ")
+        if   choix == "1": diag_module()
+        elif choix == "2": backup_module()
+        elif choix == "3": audit_module()
+        elif choix == "4": break
 
 if __name__ == "__main__":
     main()
