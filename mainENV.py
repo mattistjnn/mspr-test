@@ -7,6 +7,7 @@ import mysql.connector
 import csv
 import requests
 import subprocess
+import re
 import warnings
 from dotenv import load_dotenv
 
@@ -141,7 +142,7 @@ def analyze_obsolescence(version, eol_info):
     if not eol_info or version in ["Version Inconnue", "Access Denied"]:
         return "Inconnu"
     
-    match = next((x for x in eol_info if x['cycle'] in version), None)
+    match = next((x for x in eol_info if x['cycle'] in version or version in x['cycle']), None)
     if not match:
         return "Version non répertoriée"
     
@@ -174,12 +175,15 @@ def get_version_ssh(ip, user, pwd):
         return "Version Inconnue"
 
 def get_version_winrm(ip, user, pwd):
-    """Récupère la version OS via WinRM (Windows)."""
+    """Récupère la version OS via WinRM (Windows). Retourne l'année (ex: '2022')."""
     try:
         session = winrm.Session(f"http://{ip}:5985/wsman", auth=(user, pwd), transport='ntlm')
-        run = session.run_ps("(Get-CimInstance Win32_OperatingSystem).Version")
-        version = run.std_out.decode().strip()
-        return version if version else "Version Inconnue"
+        # Caption retourne ex: "Microsoft Windows Server 2022 Standard"
+        run = session.run_ps("(Get-CimInstance Win32_OperatingSystem).Caption")
+        caption = run.std_out.decode().strip()
+        # Extraire l'année (2016, 2019, 2022, 2025...)
+        match = re.search(r'(20\d{2})', caption)
+        return match.group(1) if match else "Version Inconnue"
     except:
         return "Version Inconnue"
 
