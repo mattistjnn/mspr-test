@@ -230,7 +230,7 @@ Cela signifie que le fichier `.env` est absent, vide, ou ne contient aucune vari
 **Opérations réalisées :**
 
 1. **Dump SQL complet** : exécute `mysqldump` sur la base `ntl_wms` et enregistre le fichier `.sql`.
-2. **Export CSV** : exécute une requête `SELECT * FROM stocks` et enregistre le résultat en `.csv`.
+2. **Export CSV** : liste toutes les tables via `SHOW TABLES`, puis exécute `SELECT * FROM <table>` en boucle pour exporter chaque table dans un fichier `.csv` séparé.
 
 **Prérequis spécifique :** la variable `INFRA_WMS_DB` doit exister dans le `.env`. En son absence, le message suivant s'affiche :
 
@@ -295,7 +295,7 @@ Tous les artefacts sont générés dans des sous-dossiers du répertoire `MSPR-N
 | Type          | Préfixe du fichier | Format | Exemple                              |
 | ------------- | ------------------ | ------ | ------------------------------------ |
 | Dump SQL      | `backup_`          | SQL    | `backups/backup_20260215_143022.sql` |
-| Export stocks | `stocks_`          | CSV    | `backups/stocks_20260215_143022.csv` |
+| Export tables | `<nom_table>_`     | CSV    | `backups/stocks_20260215_143022.csv` |
 
 **Convention de nommage :** `<préfixe>_<AAAAMMJJ>_<HHMMSS>.<ext>`
 

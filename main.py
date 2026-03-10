@@ -131,13 +131,19 @@ def backup_module():
         with open(f"backups/backup_{ts}.sql", "wb") as f:
             f.write(stdout.read())
 
-        # Export CSV de la table stocks
-        output = ssh_run(ssh, f"mysql -u root -p'{MYSQL_PWD}' ntl_wms -e 'SELECT * FROM stocks' --batch")
-        if output:
-            with open(f"backups/stocks_{ts}.csv", "w", newline='') as f:
-                writer = csv.writer(f)
-                for line in output.split("\n"):
-                    writer.writerow(line.split("\t"))
+        # Export CSV de TOUTES les tables
+        tables_str = ssh_run(ssh, f"mysql -u root -p'{MYSQL_PWD}' ntl_wms -e 'SHOW TABLES;' --batch --skip-column-names")
+        if tables_str:
+            for table in tables_str.split("\n"):
+                table = table.strip()
+                if not table:
+                    continue
+                output = ssh_run(ssh, f"mysql -u root -p'{MYSQL_PWD}' ntl_wms -e 'SELECT * FROM {table}' --batch")
+                if output:
+                    with open(f"backups/{table}_{ts}.csv", "w", newline='') as f:
+                        writer = csv.writer(f)
+                        for line in output.split("\n"):
+                            writer.writerow(line.split("\t"))
 
         print("[OK] Sauvegardes terminées.")
         ssh.close()

@@ -153,14 +153,14 @@ backup_module()
   ├── vérification de la présence de "wms-db" dans INFRA
   ├── connexion SSH vers wms-db
   ├── mysqldump -u root ntl_wms → backups/backup_<timestamp>.sql
-  ├── SELECT * FROM stocks      → backups/stocks_<timestamp>.csv
+  ├── SHOW TABLES puis boucle sur chaque table → backups/<nom_table>_<timestamp>.csv
   └── fermeture de la connexion
 ```
 
 **Détails techniques :**
 
 - Le dump SQL est réalisé via `mysqldump` exécuté à distance par SSH. Le flux `stdout` de la commande est directement écrit dans un fichier local, sans étape intermédiaire sur le serveur distant.
-- L'export CSV de la table `stocks` est réalisé via une requête `SELECT * FROM stocks` exécutée en mode `--batch` (séparateur tabulation), puis convertie en CSV standard côté client.
+- L'export CSV itère d'abord sur la liste des tables avec `SHOW TABLES`, puis chaque table est exportée via une requête `SELECT *` exécutée en mode `--batch` (séparateur tabulation) avant d'être convertie en CSV standard côté client.
 - Le mot de passe MySQL est lu depuis la variable d'environnement `DB_ROOT_PWD`.
 
 ### 3.3 Module Audit d'obsolescence (`audit_module`)
