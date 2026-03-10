@@ -13,7 +13,7 @@
     - [3.2 Module Sauvegarde (`backup_module`)](#32-module-sauvegarde-backup_module)
     - [3.3 Module Audit d'obsolescence (`audit_module`)](#33-module-audit-dobsolescence-audit_module)
   - [4. Configuration et gestion des secrets](#4-configuration-et-gestion-des-secrets)
-    - [4.1 Evolution depuis `main.py`](#41-evolution-depuis-mainpy)
+    - [4.1 Evolution de l'architecture de configuration](#41-evolution-de-larchitecture-de-configuration)
     - [4.2 Mécanisme de chargement](#42-mécanisme-de-chargement)
     - [4.3 Gestion des secrets — état actuel et limites](#43-gestion-des-secrets--état-actuel-et-limites)
   - [5. Ergonomie du menu interactif](#5-ergonomie-du-menu-interactif)
@@ -31,7 +31,7 @@
     - [7.1 Synthèse des choix techniques](#71-synthèse-des-choix-techniques)
     - [7.2 Compromis architecturaux](#72-compromis-architecturaux)
       - [Architecture monolithique (fichier unique)](#architecture-monolithique-fichier-unique)
-      - [`mainENV.py` vs. `main.py`](#mainenvpy-vs-mainpy)
+      - [Nouvelle vs Ancienne version](#nouvelle-vs-ancienne-version)
       - [Authentification par mot de passe vs. clé SSH](#authentification-par-mot-de-passe-vs-clé-ssh)
       - [Ping sweep vs. Nmap](#ping-sweep-vs-nmap)
     - [7.3 Limites connues](#73-limites-connues)
@@ -43,7 +43,7 @@
 **Version :** 1.0
 **Date :** 15/02/2026
 **Projet :** MSPR — Nord-Transit Logistique
-**Point d'entrée de référence :** `mainENV.py`
+**Point d'entrée de référence :** `main.py`
 
 ---
 
@@ -77,7 +77,7 @@ L'outil cible un parc hétérogène de 7 serveurs (4 Ubuntu, 3 Windows Server) s
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    mainENV.py                        │
+│                      main.py                         │
 │                  (point d'entrée)                    │
 ├─────────────┬──────────────┬────────────────────────┤
 │  Module 1   │  Module 2    │  Module 3              │
@@ -97,7 +97,7 @@ L'outil cible un parc hétérogène de 7 serveurs (4 Ubuntu, 3 Windows Server) s
 
 ### 2.2 Organisation du code
 
-L'architecture retenue est **monolithique** : l'ensemble de la logique métier est contenu dans un fichier unique (`mainENV.py`, 272 lignes). Ce fichier se décompose en quatre sections logiques :
+L'architecture retenue est **monolithique** : l'ensemble de la logique métier est contenu dans un fichier unique (`main.py`, 272 lignes). Ce fichier se décompose en quatre sections logiques :
 
 | Section        | Lignes  | Rôle                                                                               |
 | -------------- | ------- | ---------------------------------------------------------------------------------- |
@@ -171,7 +171,7 @@ backup_module()
 
 | Mode                 | Description                                | Entrée                                   | Sortie             |
 | -------------------- | ------------------------------------------ | ---------------------------------------- | ------------------ |
-| 1 — Scan réseau      | Ping sweep + détection de version OS       | Plage IP 192.168.10.10-55                | Rapport JSON       |
+| 1 — Scan réseau      | Ping sweep + détection de version OS       | Plage IP 192.168.10.10-55                | Rapport JSON et CSV|
 | 2 — Consultation EOL | Affichage des cycles de vie d'un OS        | Nom d'OS saisi par l'utilisateur         | Affichage terminal |
 | 3 — Import CSV       | Qualification EOL à partir d'un inventaire | Fichier CSV (colonnes : ip, os, version) | Rapport JSON       |
 
@@ -181,14 +181,14 @@ Le fonctionnement détaillé de la démarche d'audit est décrit en section 6.
 
 ## 4. Configuration et gestion des secrets
 
-### 4.1 Evolution depuis `main.py`
+### 4.1 Evolution de l'architecture de configuration
 
 L'outil a connu deux versions de gestion de la configuration :
 
-| Version               | Fichier                   | Méthode                                                                   | Problème de sécurité                                                            |
-| --------------------- | ------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `main.py` (legacy)    | `conf.json` + code source | Lecture JSON directe ; mot de passe MySQL codé en dur (`"TonMotDePasse"`) | Mots de passe en clair dans le code source et dans un fichier JSON versionnable |
-| `mainENV.py` (actuel) | `.env`                    | Chargement via `python-dotenv` ; mot de passe MySQL dans `DB_ROOT_PWD`    | Mots de passe dans le `.env` uniquement, excluable du versionnement             |
+| Version | Fichier | Méthode | Problème de sécurité |
+| --- | --- | --- | --- |
+| Ancienne version | `conf.json` + code source | Lecture JSON directe ; mot de passe MySQL codé en dur (`"TonMotDePasse"`) | Mots de passe en clair dans le code source et dans un fichier JSON versionnable |
+| Nouvelle version (`main.py` actuel) | `.env` | Chargement via `python-dotenv` ; mot de passe MySQL dans `DB_ROOT_PWD` | Mots de passe dans le `.env` uniquement, excluable du versionnement |
 
 **Justification du passage au `.env` :**
 
@@ -198,7 +198,7 @@ L'outil a connu deux versions de gestion de la configuration :
 
 ### 4.2 Mécanisme de chargement
 
-La fonction `load_infra_from_env()` (lignes 20-29 de `mainENV.py`) reconstruit le dictionnaire `INFRA` à partir des variables d'environnement préfixées `INFRA_` :
+La fonction `load_infra_from_env()` (lignes 20-29 de `main.py`) reconstruit le dictionnaire `INFRA` à partir des variables d'environnement préfixées `INFRA_` :
 
 ```
 Variable d'environnement              →   Clé interne
@@ -322,7 +322,7 @@ Le seuil de **180 jours** (environ 6 mois) détermine la frontière entre `OK` e
 - Migration progressive des serveurs : ~2-3 mois
 - Marge de sécurité : ~1 mois
 
-**Compromis :** ce seuil est codé en dur (ligne 177 de `mainENV.py`). Un seuil configurable via le `.env` aurait été envisageable, mais la valeur de 180 jours est un standard du marché et ne nécessite pas d'ajustement fréquent.
+**Compromis :** ce seuil est codé en dur (ligne 177 de `main.py`). Un seuil configurable via le `.env` aurait été envisageable, mais la valeur de 180 jours est un standard du marché et ne nécessite pas d'ajustement fréquent.
 
 ### 6.4 Détection de version OS
 
@@ -371,7 +371,7 @@ Lors du scan réseau, le type d'OS est déduit de l'adresse IP selon une convent
 
 #### Architecture monolithique (fichier unique)
 
-**Choix :** tout le code dans `mainENV.py`.
+**Choix :** tout le code dans `main.py`.
 
 **Argument :** avec environ 270 lignes, le projet reste suffisamment compact pour tenir dans un fichier unique sans nuire à la lisibilité. Cette approche offre plusieurs avantages concrets :
 
@@ -381,9 +381,9 @@ Lors du scan réseau, le type d'OS est déduit de l'adresse IP selon une convent
 
 **Limite :** pour un projet plus grand, une extraction en modules avec injection de dépendances serait souhaitable.
 
-#### `mainENV.py` vs. `main.py`
+#### Nouvelle vs Ancienne version
 
-| Aspect                              | `main.py` (legacy)                                                               | `mainENV.py` (retenu)                                                       |
+| Aspect                              | Ancienne version (`conf.json`) | Nouvelle version (`.env` actuel) |
 | ----------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Configuration                       | `conf.json` lu directement                                                       | `.env` via `python-dotenv`                                                  |
 | Mot de passe MySQL                  | Codé en dur (`"TonMotDePasse"`)                                                  | Variable `DB_ROOT_PWD`                                                      |
@@ -391,7 +391,7 @@ Lors du scan réseau, le type d'OS est déduit de l'adresse IP selon une convent
 | Backup SQL                          | `mysqldump` distant + écriture sur le serveur, puis connecteur MySQL pour le CSV | `mysqldump` via SSH (stdout rapatrié) + requête `mysql --batch` pour le CSV |
 | Dépendance `mysql-connector-python` | Requise                                                                          | Non requise                                                                 |
 
-**Justification :** `mainENV.py` élimine la nécessité d'exposer le port MySQL (3306) sur le réseau. Toutes les interactions avec la base passent par le tunnel SSH, ce qui réduit la surface d'attaque.
+**Justification :** La nouvelle version élimine la nécessité d'exposer le port MySQL (3306) sur le réseau. Toutes les interactions avec la base passent par le tunnel SSH, ce qui réduit la surface d'attaque.
 
 #### Authentification par mot de passe vs. clé SSH
 

@@ -1,0 +1,51 @@
+[
+  {
+    "ip": "192.168.10.10",
+    "os": "windows-server",
+    "version": "2019",
+    "status": "OK : Support\u00e9 jusqu'au 2029-01-09",
+    "at": "2026-02-15T19:31:44.262694"
+  },
+  {
+    "ip": "192.168.10.11",
+    "os": "windows-server",
+    "version": "2019",
+    "status": "OK : Support\u00e9 jusqu'au 2029-01-09",
+    "at": "2026-02-15T19:31:45.347991"
+  },
+  {
+    "ip": "192.168.10.21",
+    "os": "ubuntu",
+    "version": "22.04",
+    "status": "OK : Support\u00e9 jusqu'au 2027-04-01",
+    "at": "2026-02-15T19:31:55.288977"
+  },
+  {
+    "ip": "192.168.10.22",
+    "os": "ubuntu",
+    "version": "22.04",
+    "status": "OK : Support\u00e9 jusqu'au 2027-04-01",
+    "at": "2026-02-15T19:31:55.943540"
+  },
+  {
+    "ip": "192.168.10.36",
+    "os": "ubuntu",
+    "version": "22.04",
+    "status": "OK : Support\u00e9 jusqu'au 2027-04-01",
+    "at": "2026-02-15T19:32:09.971865"
+  },
+  {
+    "ip": "192.168.10.40",
+    "os": "centos",
+    "version": "10",
+    "status": "Version non r\u00e9pertori\u00e9e",
+    "at": "2026-02-15T19:32:13.667629"
+  },
+  {
+    "ip": "192.168.10.50",
+    "os": "windows-server",
+    "version": "2019",
+    "status": "OK : Support\u00e9 jusqu'au 2029-01-09",
+    "at": "2026-02-15T19:32:24.199108"
+  }
+]

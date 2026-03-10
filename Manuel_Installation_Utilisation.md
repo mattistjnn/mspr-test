@@ -3,7 +3,7 @@
 **Version :** 1.0
 **Date :** 15/02/2026
 **Destinataire :** Direction des Systèmes d'Information — Nord-Transit Logistique
-**Point d'entrée :** `mainENV.py`
+**Point d'entrée :** `main.py`
 
 ---
 
@@ -47,7 +47,7 @@ Copier l'intégralité du dossier `MSPR-NTL-CODE/` sur la machine de déploiemen
 
 ```
 MSPR-NTL-CODE/
-├── mainENV.py            # Point d'entrée principal
+├── main.py               # Point d'entrée principal
 ├── requirements.txt      # Dépendances Python
 ├── .env                  # Fichier de configuration (à créer)
 ├── reports/              # Rapports générés (créé automatiquement)
@@ -166,7 +166,7 @@ DB_ROOT_PWD=motdepasse_mysql
 Depuis le dossier `MSPR-NTL-CODE/`, avec l'environnement virtuel activé :
 
 ```bash
-python mainENV.py
+python main.py
 ```
 
 ### 4.2 Menu principal
@@ -255,7 +255,7 @@ Un sous-menu propose trois modes :
 - Effectue un ping sweep sur la plage `192.168.10.10` à `192.168.10.55`.
 - Pour chaque hôte qui répond, tente de détecter la version OS (SSH ou WinRM si les identifiants sont connus).
 - Interroge l'API `endoflife.date` pour déterminer le statut EOL.
-- Enregistre un rapport JSON dans `reports/`.
+- Enregistre un rapport JSON dans `reports/` et l'exporte aussi en fichier CSV dans `reports/`.
 
 #### Mode 2 — Consultation EOL par OS
 
@@ -286,6 +286,7 @@ Tous les artefacts sont générés dans des sous-dossiers du répertoire `MSPR-N
 | ------------ | ----------------------------- | ------ | --------------------------------------------------------- |
 | Diagnostic   | `diag_`                       | JSON   | `reports/diag_20260215_143022.json`                       |
 | Audit (scan) | `audit_obsolescence_complet_` | JSON   | `reports/audit_obsolescence_complet_20260215_150000.json` |
+| Audit (scan) | `audit_obsolescence_complet_` | CSV    | `reports/audit_obsolescence_complet_20260215_150000.csv`  |
 
 **Convention de nommage :** `<préfixe>_<AAAAMMJJ>_<HHMMSS>.json`
 
@@ -302,7 +303,7 @@ Tous les artefacts sont générés dans des sous-dossiers du répertoire `MSPR-N
 
 ```
 MSPR-NTL-CODE/
-├── mainENV.py
+├── main.py
 ├── .env
 ├── requirements.txt
 ├── venv/

@@ -237,17 +237,6 @@ def audit_module():
             except subprocess.TimeoutExpired:
                 continue
         save_report(report, "audit_obsolescence_complet")
-        
-        # Sauvegarde en CSV du rapport d'audit
-        if report:
-            os.makedirs('reports', exist_ok=True)
-            csv_filename = f"reports/audit_obsolescence_complet_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            keys = report[0].keys()
-            with open(csv_filename, 'w', newline='') as f:
-                dict_writer = csv.DictWriter(f, fieldnames=keys)
-                dict_writer.writeheader()
-                dict_writer.writerows(report)
-            print(f"[INFO] Rapport CSV généré : {csv_filename}")
 
     elif choix == "2":
         os_name = input("Entrez le nom de l'OS (ex: ubuntu, windows-server) : ")
