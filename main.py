@@ -273,7 +273,17 @@ def main():
         print("/!\\ Alerte : Aucun serveur chargé depuis le fichier .env")
 
     while True:
-        print("\n" + "="*45 + "\n  NTL-SysToolbox - GESTION D'EXPLOITATION\n" + "="*45)
+        print(r"""
+ _   _ _   _        _____           _              _ 
+| \ | | | | |      /  ___|         | |            | |
+|  \| | |_| |______\ `--. _   _ ___| |_ ___   ___ | |
+| . ` | __| |______|`--. \ | | / __| __/ _ \ / _ \| |
+| |\  | |_| |      /\__/ / |_| \__ \ || (_) | (_) | |
+\_| \_/\__|_|      \____/ \__, |___/\__\___/ \___/|_|
+                           __/ |                     
+                          |___/                      
+        """)
+        print("="*65)
         print("1. [Diagnostic] Disponibilité & Ressources")
         print("2. [Sauvegarde] Export SQL & CSV (WMS)")
         print("3. [Audit] Inventaire & Obsolescence (EOL)")
