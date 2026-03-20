@@ -254,7 +254,6 @@ def audit_module():
     print("\n--- Module 3 : Audit d'obsolescence ---")
     print("1. Scan réseau complet (192.168.10.x)")
     print("2. Lister cycles de vie pour un OS spécifique")
-    print("3. Importer un inventaire CSV")
 
     choix = input("\nVotre choix : ")
 
