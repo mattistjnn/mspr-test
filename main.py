@@ -105,10 +105,46 @@ def diag_windows(server_key):
 
 def diag_module():
     results = []
+    print("\n[INFO] Lancement du diagnostic en cours... Patientez.")
     for name, srv in INFRA.items():
         res = diag_windows(name) if srv["os"] == "windows" else diag_ubuntu(name)
         results.append(res)
-    print(json.dumps(results, indent=4))
+        
+    print("\n" + "="*70)
+    print("                     RÉSULTATS DU DIAGNOSTIC")
+    print("="*70)
+    
+    for res in results:
+        status = res.get("status", "UNKNOWN")
+        color = "\033[92m" if status == "UP" else "\033[91m"
+        reset = "\033[0m"
+        
+        print(f"\n{color}[{status:^4}]{reset} SERVEUR : {res['server'].upper()}")
+        
+        if status == "UP":
+            if "services" in res and res["services"]:
+                for srv_name, srv_status in res["services"].items():
+                    srv_color = "\033[92m" if srv_status == "OK" else "\033[91m"
+                    print(f"    ► Service {srv_name.upper():<6} : {srv_color}{srv_status}{reset}")
+            
+            if "metrics" in res:
+                if "raw" in res["metrics"]:
+                    print("    ► Métriques :")
+                    for line in res["metrics"]["raw"].split('\n'):
+                        print(f"         {line}")
+                else:
+                    print("    ► Métriques :")
+                    for k, v in res["metrics"].items():
+                        # Traduction basique des statuts Windows (4 = Running, 1 = Stopped)
+                        if str(v) == "4" and k in ["AD", "DNS"]: 
+                            v = "\033[92mEn cours (Running)\033[0m"
+                        elif str(v) == "1" and k in ["AD", "DNS"]: 
+                            v = "\033[91mArrêté (Stopped)\033[0m"
+                        print(f"         - {k:<8} : {v}")
+        else:
+            print(f"    ► {color}Erreur : {res.get('error', 'Détail indisponible')}{reset}")
+            
+    print("\n" + "="*70)
     save_report(results, "diag")
 
 
